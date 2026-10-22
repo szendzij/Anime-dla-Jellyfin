@@ -1,0 +1,38 @@
+name: "Anime dla Jellyfin"
+version: "1.0.6"
+slug: "oa_anime_jellyfin"
+description: "Kolekcja anime w Jellyfin: ogladajanime.pl, CDA i Shinden (redirector strumieni + panel)"
+url: "https://github.com/USER/REPO"
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+map:
+  - media:rw
+  - share:rw
+options:
+  login: ""
+  password: ""
+  root: "/media/extDisk/anime"
+  base_url: "http://192.168.1.10:9099"
+  jellyfin_url: "http://192.168.1.10:8096"
+  jellyfin_api_key: ""
+  segment_proxy: false
+  cda_proxy: false
+schema:
+  login: str
+  password: password
+  root: str
+  base_url: str
+  jellyfin_url: str
+  jellyfin_api_key: password
+  segment_proxy: bool
+  cda_proxy: bool
+ports:
+  9099/tcp: 9099
+  9100/tcp: 9100
+ports_description:
+  9099/tcp: "redirector strumieni (dla .strm)"
+  9100/tcp: "panel kolekcji"

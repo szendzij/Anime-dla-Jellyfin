@@ -1,0 +1,11 @@
+[Unit]
+Description=ogladajanime sync kolekcji (nowe odcinki)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=media
+Group=media
+EnvironmentFile=/etc/oa-anime.env
+WorkingDirectory=/opt/ogladajanime/client
+ExecStart=/usr/bin/python3 /opt/ogladajanime/client/sync.py

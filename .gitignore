@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Artefakty budowania dodatku — odtwarzalne przez oa_anime/package.sh
+*.tar.gz
+
+# Lokalne dane i sekrety: NIGDY nie commituj
+*.env
+*.lwp
+session.lwp
+collection.json
+jellyfin.env
+
+# Klon cudzego kodu użyty do analizy endpointów (nie jest częścią projektu)
+repo/
+
+# System / edytory
+.DS_Store
+*.swp
+.idea/
+.vscode/

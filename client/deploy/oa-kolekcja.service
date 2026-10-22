@@ -1,0 +1,17 @@
+[Unit]
+Description=ogladajanime panel kolekcji (szukaj i dodawaj do Jellyfin)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=media
+Group=media
+EnvironmentFile=/etc/oa-anime.env
+WorkingDirectory=/opt/ogladajanime/client
+ExecStart=/usr/bin/python3 /opt/ogladajanime/client/kolekcja.py --port 9100 --root ${OA_ROOT} --base-url ${OA_BASE_URL}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

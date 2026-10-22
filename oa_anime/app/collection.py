@@ -1,0 +1,150 @@
+"""Logika kolekcji: dodawanie seriali, synchronizacja, skan Jellyfina.
+
+Wspólna warstwa dla panelu (kolekcja.py) i crona (sync.py). Źródło jest teraz
+parametrem: wpisy pamiętają, skąd pochodzą, a stare (bez pola `source`)
+traktujemy jako ogladajanime, żeby istniejąca kolekcja nie wymagała migracji.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import time
+from pathlib import Path
+
+import requests
+
+from jellyfin import sanitize, write_strm_url
+from providers import OA, Episode, Source
+
+DEFAULT_SOURCE = OA
+
+
+def load(path: Path) -> dict:
+    if not path.exists():
+        return {"series": {}}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"series": {}}
+
+
+def save(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def entry_source(entry: dict) -> str:
+    return entry.get("source") or DEFAULT_SOURCE
+
+
+def entry_ref(key: str, entry: dict) -> str:
+    """Identyfikator serialu w źródle. Starsze wpisy mają go tylko w kluczu."""
+    return entry.get("ref") or key
+
+
+def _series_dir(root: Path, title: str) -> Path:
+    return Path(root) / sanitize(title)
+
+
+def add_series(
+    source: Source,
+    data: dict,
+    ref: str,
+    title: str,
+    root: Path,
+    base_url: str,
+    poster: str = "",
+    key: str | None = None,
+) -> dict:
+    """Generuje .strm dla wszystkich odcinków i dopisuje serial do kolekcji."""
+    if not base_url:
+        raise RuntimeError(
+            "Brak adresu redirectora (base_url). Bez niego .strm wygaśnie po kilku godzinach."
+        )
+
+    episodes = source.episodes(ref)
+    if not episodes:
+        raise RuntimeError(f"'{ref}' nie ma odcinków")
+
+    written = 0
+    for ep in episodes:
+        write_strm_url(Path(root), title, ep, source.strm_url(base_url, ep.ep_id))
+        written += 1
+
+    main = [e for e in episodes if e.season == 1]
+    data["series"][key or ref] = {
+        "source": source.name,
+        "ref": ref,
+        "title": title,
+        "poster": poster,
+        "added": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "root": str(root),
+        "base_url": base_url,
+        "episodes": len(main),
+        "files": written,
+    }
+    return data["series"][key or ref]
+
+
+def remove_series(data: dict, key: str) -> bool:
+    entry = data["series"].pop(key, None)
+    if not entry:
+        return False
+    folder = _series_dir(Path(entry["root"]), entry["title"])
+    root = Path(entry["root"]).resolve()
+    try:
+        if folder.exists() and root in folder.resolve().parents:
+            shutil.rmtree(folder)
+    except OSError:
+        pass
+    return True
+
+
+def sync_series(source: Source, key: str, entry: dict) -> dict:
+    """Dopisuje .strm dla odcinków, których jeszcze nie ma na dysku."""
+    root = Path(entry["root"])
+    base_url = entry["base_url"]
+    title = entry["title"]
+
+    episodes = source.episodes(entry_ref(key, entry))
+    added = 0
+    for ep in episodes:
+        if not source.prefix and not str(ep.ep_id).isdigit():
+            continue
+        path = _target(root, title, ep)
+        if not path.exists():
+            write_strm_url(root, title, ep, source.strm_url(base_url, ep.ep_id))
+            added += 1
+
+    entry["episodes"] = len([e for e in episodes if e.season == 1])
+    entry["last_sync"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    return {"key": key, "title": title, "added": added, "total": len(episodes)}
+
+
+def _target(root: Path, title: str, ep: Episode) -> Path:
+    from jellyfin import target_path
+
+    return target_path(root, title, ep)
+
+
+def trigger_scan(url: str | None = None, key: str | None = None) -> bool:
+    """Prosi Jellyfin o skan bibliotek. Bez klucza zwraca False (nie jest błędem)."""
+    url = url or os.environ.get("JELLYFIN_URL")
+    key = key or os.environ.get("JELLYFIN_API_KEY")
+    if not url or not key:
+        return False
+    # Nie każdy serwer przyjmuje X-Emby-Token (nginx potrafi go zgubić) —
+    # wariant Authorization: MediaBrowser ***"..." działa szerzej.
+    headers = {
+        "Authorization": f'MediaBrowser Token="{key}"',
+        "X-Emby-Token": key,
+    }
+    try:
+        r = requests.post(f"{url.rstrip('/')}/Library/Refresh", headers=headers, timeout=15)
+        return r.status_code in (200, 204)
+    except requests.RequestException:
+        return False
