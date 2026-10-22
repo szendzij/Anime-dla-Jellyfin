@@ -370,12 +370,16 @@ class OgladajAnime:
 
 
 def pick_best(links: Iterable[Link], preferred: int | None = None) -> Link | None:
-    links = list(links)
-    if not links:
+    candidates = sorted(list(links), key=lambda l: l.res, reverse=True)
+    if not candidates:
         return None
-    if preferred:
-        for l in links:
-            if l.res == preferred:
-                return l
-        return None
-    return links[0]
+    if not preferred:
+        return candidates[0]
+    for l in candidates:
+        if l.res == preferred:
+            return l
+    # Fallback: preferuj najwyższą dostępną <= preferred, inaczej najwyższą w ogóle
+    lower_or_equal = [l for l in candidates if l.res <= preferred and l.res > 0]
+    if lower_or_equal:
+        return lower_or_equal[0]
+    return candidates[0]

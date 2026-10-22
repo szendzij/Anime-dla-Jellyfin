@@ -295,14 +295,14 @@ def video_id_from_url(value: str) -> str | None:
     v = (value or "").strip()
     if not v:
         return None
-    m = re.search(r"/video/([0-9a-z]+)", v)
+    m = re.search(r"/video/([0-9a-z]+)", v, re.I)
     if m:
-        return m.group(1)
-    m = re.search(r"ebd\.cda\.pl/\d+x\d+/([0-9a-z]+)", v)
+        return m.group(1).lower()
+    m = re.search(r"ebd\.cda\.pl/\d+x\d+/([0-9a-z]+)", v, re.I)
     if m:
-        return m.group(1)
-    m = re.fullmatch(r"([0-9a-z]{6,})", v)
-    return m.group(1) if m else None
+        return m.group(1).lower()
+    m = re.fullmatch(r"([0-9a-z]{6,})", v, re.I)
+    return m.group(1).lower() if m else None
 
 
 def normalize_ref(value: str) -> str | None:
@@ -478,13 +478,14 @@ class Cda:
             if ".mpd" in url:
                 got = self._variants(url)
                 if got:
-                    out = got
+                    out.extend(got)
                     break
                 mime = "application/dash+xml"
             else:
                 mime = "application/x-mpegURL" if ".m3u8" in url else "video/mp4"
-            out = [Link(label=name, res=res, src=url, main_url=url, mime=mime)]
-            break
+            out.append(Link(label=name, res=res, src=url, main_url=url, mime=mime))
+            if self.quality and res == self.quality:
+                break
 
         # manifest jako plan B (HLS/DASH) — gdy videoGetLink odmówi
         if not out and cfg.get("manifest"):
