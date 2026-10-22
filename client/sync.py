@@ -33,7 +33,7 @@ def main() -> int:
     series = data.get("series", {})
     if not series:
         if args.verbose:
-            print("Kolekcja jest pusta — dodaj coś przez panel (kolekcja.py).")
+            print("[sync] Kolekcja jest pusta — dodaj seriale w panelu WWW.")
         return 0
 
     kw = {"session_file": args.session_file} if args.session_file else {}
@@ -48,8 +48,11 @@ def main() -> int:
             if src:
                 src.ensure_ready()
     except AuthError as e:
-        print(f"Błąd logowania: {e}")
+        print(f"[sync] Błąd logowania: {e}")
         return 2
+
+    if args.verbose:
+        print(f"[sync] sprawdzam {len(series)} serii w kolekcji...", flush=True)
 
     total_added = 0
     failed = 0
@@ -62,13 +65,13 @@ def main() -> int:
             total_added += res["added"]
             if res["added"] or args.verbose:
                 state = f"+{res['added']} nowych" if res["added"] else "bez zmian"
-                print(f"  {res['title']:<40} {res['total']:>4} odc.  {state}")
+                print(f"[sync] {res['title']:<40} {res['total']:>4} odc.  {state}")
         except (ProviderError, OSError) as e:
             failed += 1
-            print(f"  {entry.get('title', key):<40} BŁĄD: {e}")
+            print(f"[sync] {entry.get('title', key):<40} BŁĄD: {e}")
 
     if args.dry_run:
-        print(f"\n[dry-run] doszłoby {total_added} plików; nic nie zapisano")
+        print(f"\n[sync] [dry-run] doszłoby {total_added} plików; nic nie zapisano")
         return 0
 
     collection.save(path, data)
@@ -81,9 +84,8 @@ def main() -> int:
         return 0  # tryb cron: cisza, gdy nic się nie zmieniło
 
     print(
-        f"\nDodano {total_added} plików"
-        + (", skan Jellyfina uruchomiony" if scanned else
-           (", skan pominięty (brak JELLYFIN_API_KEY)" if total_added else ""))
+        f"\n[sync] Podsumowanie: dodano {total_added} plików"
+        + (", skan Jellyfina uruchomiony" if scanned else (", skan pominięty" if total_added else ""))
         + (f", błędów: {failed}" if failed else "")
     )
     return 0 if not failed else 1

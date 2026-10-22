@@ -43,6 +43,47 @@ class TestCollectionSync(unittest.TestCase):
         self.assertIn("s2", reloaded["series"])
         self.assertEqual(reloaded["series"]["s1"].get("last_sync"), "2026-10-22")
 
+    def test_trigger_scan_status_missing_vars(self):
+        import os
+        old_url = os.environ.pop("JELLYFIN_URL", None)
+        old_key = os.environ.pop("JELLYFIN_API_KEY", None)
+        try:
+            ok, msg = collection.trigger_scan_status()
+            self.assertFalse(ok)
+            self.assertIn("JELLYFIN_URL", msg)
+
+            ok, msg = collection.trigger_scan_status(url="http://jellyfin:8096")
+            self.assertFalse(ok)
+            self.assertIn("JELLYFIN_API_KEY", msg)
+        finally:
+            if old_url:
+                os.environ["JELLYFIN_URL"] = old_url
+            if old_key:
+                os.environ["JELLYFIN_API_KEY"] = old_key
+
+    def test_trigger_scan_status_success_and_error(self):
+        from unittest.mock import patch, MagicMock
+        import requests
+
+        with patch("collection.requests.post") as mock_post:
+            # 204 Success
+            mock_post.return_value = MagicMock(status_code=204)
+            ok, msg = collection.trigger_scan_status("http://example.com", "secret")
+            self.assertTrue(ok)
+            self.assertIn("został uruchomiony", msg)
+
+            # 401 Auth error
+            mock_post.return_value = MagicMock(status_code=401)
+            ok, msg = collection.trigger_scan_status("http://example.com", "secret")
+            self.assertFalse(ok)
+            self.assertIn("Błąd autoryzacji", msg)
+
+            # Connection exception
+            mock_post.side_effect = requests.RequestException("connection timeout")
+            ok, msg = collection.trigger_scan_status("http://example.com", "secret")
+            self.assertFalse(ok)
+            self.assertIn("Błąd połączenia", msg)
+
 
 if __name__ == "__main__":
     unittest.main()

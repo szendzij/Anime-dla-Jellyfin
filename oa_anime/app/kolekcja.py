@@ -159,7 +159,7 @@ function toast(text,type='info'){
 }
 
 async function api(endpoint,body){
-  const url=BASE+endpoint.replace(/^\//,'');
+  const url=BASE+endpoint.replace(/^\\//,'');
   const r=await fetch(url,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});
   const j=await r.json().catch(()=>({error:'Nieprawidłowa odpowiedź serwera'}));
   if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
@@ -299,7 +299,7 @@ $('#url').addEventListener('keydown',e=>{if(e.key==='Enter') addUrl()});
 $('#scan').onclick=async()=>{
   try{
     const d=await api('api/scan',{});
-    toast(d.scanned?'Skan Jellyfina został uruchomiony!':'Brak klucza API Jellyfina — uruchom skan ręcznie w panelu Jellyfin',d.scanned?'ok':'err');
+    toast(d.message || (d.scanned?'Skan Jellyfina został uruchomiony!':'Nie udało się uruchomić skanu Jellyfin'),d.scanned?'ok':'err');
   }catch(e){
     toast('Błąd skanowania: '+e.message,'err');
   }
@@ -329,7 +329,7 @@ def build_handler(st: State):
         server_version = "Kolekcja/1.1"
 
         def log_message(self, fmt: str, *args) -> None:  # noqa: A003
-            print(f"{self.address_string()} {fmt % args}", flush=True)
+            print(f"[panel] {self.address_string()} {fmt % args}", flush=True)
 
         def _send(self, code: int, body: bytes, ctype: str) -> None:
             self.send_response(code)
@@ -376,11 +376,15 @@ def build_handler(st: State):
                 if not q:
                     self._json(400, {"error": "brak frazy"})
                     return
+                print(f"[panel] szukaj: '{q}' (źródło: {name})", flush=True)
                 try:
                     src = self._source(name)
                     src.ensure_ready()
-                    self._json(200, src.search(q))
+                    results = src.search(q)
+                    print(f"[panel] znaleziono {len(results)} wyników dla '{q}'", flush=True)
+                    self._json(200, results)
                 except (AuthError, ProviderError) as e:
+                    print(f"[panel] błąd wyszukiwania '{q}': {e}", flush=True)
                     self._json(502, {"error": str(e)})
                 return
             if p == "/api/collection":
@@ -390,12 +394,14 @@ def build_handler(st: State):
 
         def _add(self, source, ref: str, title: str, poster: str) -> dict:
             source.ensure_ready()
+            print(f"[panel] dodawanie serii: '{title}' (ref: {ref}, źródło: {source.name})", flush=True)
             with st.lock:
                 st.data = collection.load(st.path)
                 entry = collection.add_series(
                     source, st.data, ref, title, st.root, st.base_url, poster
                 )
                 collection.save(st.path, st.data)
+            print(f"[panel] zapisano serię '{title}' ({len(entry.get('files', []))} plików .strm)", flush=True)
             return entry
 
         def do_POST(self) -> None:  # noqa: N802
@@ -412,6 +418,7 @@ def build_handler(st: State):
                     src = self._source(body.get("source") or OA)
                     entry = self._add(src, ref, title, body.get("poster") or "")
                 except (AuthError, ProviderError, OSError) as e:
+                    print(f"[panel] błąd dodawania serii '{title}': {e}", flush=True)
                     self._json(502, {"error": str(e)})
                     return
                 scanned = collection.trigger_scan()
@@ -421,7 +428,9 @@ def build_handler(st: State):
             if p == "/api/link":
                 # Wklejony link CDA: rozpoznajemy folder albo pojedynczy film
                 # i sami ustalamy tytuł serialu.
-                ref = normalize_ref(body.get("url") or "")
+                raw_url = body.get("url") or ""
+                print(f"[panel] dodawanie z linku: '{raw_url}'", flush=True)
+                ref = normalize_ref(raw_url)
                 if not ref:
                     self._json(400, {"error": "nie rozpoznano linku CDA (oczekiwano /…/folder/<id> albo /video/<id>)"})
                     return
@@ -430,6 +439,7 @@ def build_handler(st: State):
                     title = src.api.describe(ref)
                     entry = self._add(src, ref, title, "")
                 except (ProviderError, OSError) as e:
+                    print(f"[panel] błąd przetwarzania linku '{raw_url}': {e}", flush=True)
                     self._json(502, {"error": str(e)})
                     return
                 scanned = collection.trigger_scan()
@@ -438,16 +448,20 @@ def build_handler(st: State):
 
             if p == "/api/remove":
                 key = (body.get("key") or "").strip()
+                print(f"[panel] usuwanie z kolekcji: '{key}'", flush=True)
                 with st.lock:
                     st.data = collection.load(st.path)
                     ok = collection.remove_series(st.data, key)
                     collection.save(st.path, st.data)
                 scanned = collection.trigger_scan() if ok else False
+                print(f"[panel] usunięto serię '{key}': {'sukces' if ok else 'nie znaleziono'}", flush=True)
                 self._json(200 if ok else 404, {"removed": ok, "scanned": scanned})
                 return
 
             if p == "/api/scan":
-                self._json(200, {"scanned": collection.trigger_scan()})
+                print("[panel] żądanie skanowania biblioteki Jellyfin z interfejsu WWW", flush=True)
+                ok, msg = collection.trigger_scan_status()
+                self._json(200, {"scanned": ok, "message": msg})
                 return
 
             self._json(404, {"error": "nieznana ścieżka"})
@@ -476,24 +490,24 @@ def main() -> int:
     try:
         sources[OA].ensure_ready()
     except AuthError as e:
-        print(f"uwaga: ogladajanime nieaktywne ({e}) — zostaje CDA", flush=True)
+        print(f"[panel] uwaga: ogladajanime nieaktywne ({e}) — zostaje CDA i Shinden", flush=True)
 
     st = State(sources, collection.load(path), path, root, args.base_url)
     try:
         httpd = ThreadingHTTPServer((args.host, args.port), build_handler(st))
     except OSError as e:
         print(
-            f"nie mogę zająć portu {args.host}:{args.port} ({e}). "
+            f"[panel] nie mogę zająć portu {args.host}:{args.port} ({e}). "
             f"Sprawdź, czy panel już nie działa: ss -lntp | grep {args.port}",
             file=sys.stderr,
             flush=True,
         )
         return 1
-    print(f"panel: http://{args.host}:{args.port}/  (biblioteka: {root})", flush=True)
+    print(f"[panel] start panelu WWW: http://{args.host}:{args.port}/ (katalog: {root})", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nzatrzymano", flush=True)
+        print("\n[panel] zatrzymano", flush=True)
     return 0
 
 

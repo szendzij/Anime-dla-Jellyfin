@@ -131,20 +131,46 @@ def _target(root: Path, title: str, ep: Episode) -> Path:
     return target_path(root, title, ep)
 
 
-def trigger_scan(url: str | None = None, key: str | None = None) -> bool:
-    """Prosi Jellyfin o skan bibliotek. Bez klucza zwraca False (nie jest błędem)."""
-    url = url or os.environ.get("JELLYFIN_URL")
-    key = key or os.environ.get("JELLYFIN_API_KEY")
-    if not url or not key:
-        return False
+def trigger_scan_status(url: str | None = None, key: str | None = None) -> tuple[bool, str]:
+    """Prosi Jellyfin o skan bibliotek. Zwraca (sukces: bool, komunikat: str)."""
+    url = (url or os.environ.get("JELLYFIN_URL") or "").strip()
+    key = (key or os.environ.get("JELLYFIN_API_KEY") or "").strip()
+    if not url:
+        msg = "Brak adresu Jellyfina (JELLYFIN_URL) w konfiguracji"
+        print(f"[jellyfin] {msg}", flush=True)
+        return False, msg
+    if not key:
+        msg = "Brak klucza API Jellyfina (JELLYFIN_API_KEY) — jeśli dodano w opcjach HA, zrestartuj dodatek"
+        print(f"[jellyfin] {msg}", flush=True)
+        return False, msg
     # Nie każdy serwer przyjmuje X-Emby-Token (nginx potrafi go zgubić) —
-    # wariant Authorization: MediaBrowser ***"..." działa szerzej.
+    # wariant Authorization: MediaBrowser ***"..." oraz parametr api_key działają szerzej.
     headers = {
         "Authorization": f'MediaBrowser Token="{key}"',
         "X-Emby-Token": key,
     }
+    target = f"{url.rstrip('/')}/Library/Refresh"
+    print(f"[jellyfin] wysyłam żądanie skanowania biblioteki do {target}...", flush=True)
     try:
-        r = requests.post(f"{url.rstrip('/')}/Library/Refresh", headers=headers, timeout=15)
-        return r.status_code in (200, 204)
-    except requests.RequestException:
-        return False
+        r = requests.post(target, headers=headers, params={"api_key": key}, timeout=15)
+        if r.status_code in (200, 204):
+            msg = "Skan Jellyfina został uruchomiony!"
+            print(f"[jellyfin] sukces (HTTP {r.status_code}): skan bibliotek wystartował", flush=True)
+            return True, msg
+        if r.status_code in (401, 403):
+            msg = f"Błąd autoryzacji Jellyfin ({r.status_code}): nieprawidłowy klucz API"
+            print(f"[jellyfin] {msg}", flush=True)
+            return False, msg
+        msg = f"Jellyfin zwrócił błąd HTTP {r.status_code}"
+        print(f"[jellyfin] {msg}", flush=True)
+        return False, msg
+    except requests.RequestException as e:
+        msg = f"Błąd połączenia z Jellyfin ({url}): {e}"
+        print(f"[jellyfin] {msg}", flush=True)
+        return False, msg
+
+
+def trigger_scan(url: str | None = None, key: str | None = None) -> bool:
+    """Prosi Jellyfin o skan bibliotek. Bez klucza zwraca False (nie jest błędem)."""
+    ok, _ = trigger_scan_status(url, key)
+    return ok

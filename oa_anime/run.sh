@@ -20,40 +20,60 @@ export JELLYFIN_API_KEY="$(opt jellyfin_api_key)"
 ROOT="$(opt root)"
 BASE_URL="$(opt base_url)"
 
+log "======================================================="
+log "            Anime dla Jellyfin - Start                 "
+log "======================================================="
+log "Katalog biblioteki:  ${ROOT}"
+log "Adres redirectora:   ${BASE_URL}"
+
+if [ -n "${JELLYFIN_URL}" ] && [ -n "${JELLYFIN_API_KEY}" ]; then
+    KEY_LEN=${#JELLYFIN_API_KEY}
+    if [ "$KEY_LEN" -gt 8 ]; then
+        MASKED_KEY="$(echo "${JELLYFIN_API_KEY}" | cut -c 1-4)...$(echo "${JELLYFIN_API_KEY}" | rev | cut -c 1-4 | rev)"
+    else
+        MASKED_KEY="****"
+    fi
+    log "Jellyfin:            ${JELLYFIN_URL} (klucz API: ${MASKED_KEY})"
+elif [ -n "${JELLYFIN_URL}" ]; then
+    log "Jellyfin:            ${JELLYFIN_URL} (brak klucza API — automatyczny skan wyłączony)"
+else
+    log "Jellyfin:            brak konfiguracji — automatyczny skan wyłączony"
+fi
+
+if [ -n "${OA_LOGIN}" ] && [ -n "${OA_PASS}" ]; then
+    log "OglądajAnime:        konto '${OA_LOGIN}' skonfigurowane"
+else
+    log "OglądajAnime:        brak loginu/hasła (aktywne CDA i Shinden)"
+fi
+
 # true = segmenty HLS idą przez dodatek (pewniejsze, zużywa łącze)
 # false = przekierowanie 302 do CDN (oszczędne)
 if [ "$(opt segment_proxy)" = "True" ] || [ "$(opt segment_proxy)" = "true" ]; then
     export OA_SEGMENT_PROXY=1
-    log "segmenty HLS: proxy przez dodatek"
+    log "Proxy segmentów HLS: włączone (strumień przez dodatek)"
 else
     export OA_SEGMENT_PROXY=0
-    log "segmenty HLS: przekierowanie 302"
-fi
-
-log "biblioteka: ${ROOT}"
-log "redirector dla .strm: ${BASE_URL}"
-
-if [ -z "${OA_LOGIN}" ] || [ -z "${OA_PASS}" ]; then
-    log "brak loginu/hasla ogladajanime — dziala tylko zrodlo CDA"
+    log "Proxy segmentów HLS: wyłączone (przekierowanie 302)"
 fi
 
 # true = pliki z CDA ida przez dodatek (gdyby CDN odrzucal ffmpeg)
 if [ "$(opt cda_proxy)" = "True" ] || [ "$(opt cda_proxy)" = "true" ]; then
     export CDA_PROXY=1
-    log "CDA: strumien przez dodatek"
+    log "Proxy strumieni CDA: włączone (strumień przez dodatek)"
 else
     export CDA_PROXY=0
-    log "CDA: przekierowanie 302 do CDN"
+    log "Proxy strumieni CDA: wyłączone (przekierowanie 302 do CDN)"
 fi
+log "======================================================="
 
 mkdir -p "${ROOT}"
 cd /app
 
-log "start redirectora :9099"
+log "uruchamianie serwera redirectora (:9099)..."
 python3 streamd.py --host 0.0.0.0 --port 9099 &
 STREAM_PID=$!
 
-log "start panelu :9100"
+log "uruchamianie panelu WWW (:9100)..."
 python3 kolekcja.py --host 0.0.0.0 --port 9100 \
     --root "${ROOT}" --base-url "${BASE_URL}" --data "${DATA}" &
 PANEL_PID=$!
@@ -61,8 +81,8 @@ PANEL_PID=$!
 (
     while true; do
         sleep 60
-        log "sync odcinkow"
-        python3 sync.py --data "${DATA}" || log "sync nieudany"
+        log "uruchamiam okresową synchronizację kolekcji..."
+        python3 sync.py --data "${DATA}" -v || log "synchronizacja zakończona z błędami"
         sleep 86400
     done
 ) &

@@ -122,7 +122,7 @@ def make_handler(caches: dict, series_hint: str | None):
         server_version = "OAStream/1.0"
 
         def log_message(self, fmt: str, *args) -> None:  # noqa: A003
-            print(f"{self.address_string()} {fmt % args}", flush=True)
+            print(f"[streamd] {self.address_string()} {fmt % args}", flush=True)
 
         def _json(self, code: int, payload: dict) -> None:
             body = json.dumps(payload).encode()
@@ -164,26 +164,33 @@ def make_handler(caches: dict, series_hint: str | None):
                 return
 
             name, ep_id = split_ref(m.group(1))
+            print(f"[streamd] żądanie odcinka: {m.group(1)} (źródło: {name})", flush=True)
             try:
                 url = caches[name].get(ep_id)
             except AuthError as e:
+                print(f"[streamd] błąd logowania ({m.group(1)}): {e}", flush=True)
                 self._json(502, {"error": f"logowanie: {e}"})
                 return
             except ProviderError as e:
+                print(f"[streamd] błąd dostawcy ({m.group(1)}): {e}", flush=True)
                 self._json(502, {"error": str(e)})
                 return
 
             if not url:
+                print(f"[streamd] brak dostępnych źródeł dla odcinka {m.group(1)}", flush=True)
                 self._json(404, {"error": f"odcinek {m.group(1)} nie ma dostępnych źródeł"})
                 return
 
+            clean_url = url.split("?")[0]
             if name in (CDA, SHINDEN):
                 # CDA oddaje jeden plik na jakość (albo HLS z normalnymi .ts),
                 # a Shinden rozwiązujemy do CDA — w obu przypadkach ffmpeg pobiera
                 # materiał sam, więc przekierowujemy i nie przepuszczamy bajtów.
                 if CDA_PROXY:
+                    print(f"[streamd] odcinek {m.group(1)} -> proxy CDA", flush=True)
                     self._proxy(url, referer="https://www.cda.pl/")
                     return
+                print(f"[streamd] odcinek {m.group(1)} -> 302 przekierowanie ({clean_url})", flush=True)
                 self.send_response(302)
                 self.send_header("Location", url)
                 self.send_header("Cache-Control", "no-store")
@@ -195,12 +202,14 @@ def make_handler(caches: dict, series_hint: str | None):
             if ".m3u8" in url:
                 # nie przekierowujemy na CDN — tam playlista wskazuje segmenty .css
                 # i ffmpeg je odrzuca. Podajemy własną, przepisaną playlistę.
+                print(f"[streamd] odcinek {m.group(1)} -> 302 playlista HLS (/p/...)", flush=True)
                 self.send_response(302)
                 self.send_header("Location", "http://%s/p/%s.m3u8" % (self._host(), b64e(url)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 return
 
+            print(f"[streamd] odcinek {m.group(1)} -> proxy ({clean_url})", flush=True)
             self._proxy(url)
 
         def _fetch_text(self, url: str, referer: str = "https://ogladajanime.pl/") -> tuple[str, str] | None:
@@ -299,11 +308,11 @@ def main() -> int:
     sources = build_sources(quality=args.quality, **kw)
     try:
         sources[OA].ensure_ready()
-        print("ogladajanime: zalogowano", flush=True)
+        print("[streamd] ogladajanime: zalogowano pomyślnie", flush=True)
     except (AuthError, OgladajAnimeError) as e:
         # CDA działa bez logowania — brak danych ogladajanime nie blokuje startu,
         # odcinki z tego źródła odpowiedzą wtedy 502 z powodem.
-        print(f"ogladajanime: pominięte ({e})", flush=True)
+        print(f"[streamd] ogladajanime: pominięte ({e}) — aktywne CDA i Shinden", flush=True)
 
     caches = {name: LinkCache(src, args.quality) for name, src in sources.items()}
     try:
@@ -312,17 +321,17 @@ def main() -> int:
         # Najczęstsza przyczyna: druga instancja albo port zajęty przez sąsiada.
         # Bez tego log pokazuje surowy traceback, a supervisor restartuje w pętli.
         print(
-            f"nie mogę zająć portu {args.host}:{args.port} ({e}). "
+            f"[streamd] nie mogę zająć portu {args.host}:{args.port} ({e}). "
             f"Sprawdź, czy coś już nasłuchuje: ss -lntp | grep {args.port}",
             file=sys.stderr,
             flush=True,
         )
         return 1
-    print(f"nasłuchuję na http://{args.host}:{args.port}  (np. /e/412634)", flush=True)
+    print(f"[streamd] start redirectora: http://{args.host}:{args.port} (strumieniowanie .strm)", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nzatrzymano", flush=True)
+        print("\n[streamd] zatrzymano", flush=True)
     return 0
 
 
