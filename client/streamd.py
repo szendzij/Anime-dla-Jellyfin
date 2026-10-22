@@ -67,6 +67,7 @@ class LinkCache:
         self.quality = quality
         self._data: dict[str, tuple[str, float]] = {}
         self._lock = threading.Lock()
+        self._fetching: dict[str, threading.Event] = {}
 
     @staticmethod
     def _expiry(url: str) -> float:
@@ -81,17 +82,39 @@ class LinkCache:
             if hit and hit[1] > time.time():
                 return hit[0]
 
+            event = self._fetching.get(ep_id)
+            is_fetcher = False
+            if event is None:
+                event = threading.Event()
+                self._fetching[ep_id] = event
+                is_fetcher = True
+
+        if not is_fetcher:
+            event.wait(timeout=45)
+            with self._lock:
+                hit = self._data.get(ep_id)
+                return hit[0] if hit else None
+
+        url = None
+        try:
             links = self.source.links(ep_id)
             link = pick_best(links, self.quality)
-            if link is None:
-                self._data.pop(ep_id, None)
-                return None
+            if link is not None:
+                url = link.src
+        finally:
+            with self._lock:
+                if url:
+                    self._data[ep_id] = (url, self._expiry(url))
+                else:
+                    self._data.pop(ep_id, None)
+                self._fetching.pop(ep_id, None)
+                event.set()
 
-            self._data[ep_id] = (link.src, self._expiry(link.src))
-            return link.src
+        return url
 
     def size(self) -> int:
-        return len(self._data)
+        with self._lock:
+            return len(self._data)
 
 
 def make_handler(caches: dict, series_hint: str | None):
