@@ -28,7 +28,7 @@ from urllib.parse import parse_qs, urlparse
 
 import collection
 from oa import AuthError, OgladajAnimeError
-from providers import CDA, OA, CdaError, build_sources
+from providers import CDA, OA, ProviderError, build_sources
 from providers.cda import normalize_ref
 
 PAGE = """<!doctype html>
@@ -223,7 +223,7 @@ def build_handler(st: State):
                     src = self._source(name)
                     src.ensure_ready()
                     self._json(200, src.search(q))
-                except (AuthError, OgladajAnimeError, CdaError) as e:
+                except (AuthError, ProviderError) as e:
                     self._json(502, {"error": str(e)})
                 return
             if u.path == "/api/collection":
@@ -253,7 +253,7 @@ def build_handler(st: State):
                 try:
                     src = self._source(body.get("source") or OA)
                     entry = self._add(src, ref, title, body.get("poster") or "")
-                except (AuthError, OgladajAnimeError, CdaError, RuntimeError, OSError) as e:
+                except (AuthError, ProviderError, OSError) as e:
                     self._json(502, {"error": str(e)})
                     return
                 scanned = collection.trigger_scan()
@@ -271,7 +271,7 @@ def build_handler(st: State):
                     src = self._source(CDA)
                     title = src.api.describe(ref)
                     entry = self._add(src, ref, title, "")
-                except (CdaError, RuntimeError, OSError) as e:
+                except (ProviderError, OSError) as e:
                     self._json(502, {"error": str(e)})
                     return
                 scanned = collection.trigger_scan()

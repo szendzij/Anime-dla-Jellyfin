@@ -55,7 +55,14 @@ RE_AUTH = re.compile(r"_Storage\.basic\s*=\s*'([^']+)'")
 RE_IFRAME = re.compile(r'<iframe[^>]*src="([^"]+)"', re.I)
 
 
-class ShindenError(RuntimeError):
+try:
+    from providers import ProviderError
+except (ImportError, ModuleNotFoundError):
+    class ProviderError(RuntimeError):
+        pass
+
+
+class ShindenError(ProviderError):
     pass
 
 

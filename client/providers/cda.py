@@ -48,7 +48,14 @@ RE_NUM_TRAILING = re.compile(r"(\d{1,4})\s*$")
 RE_NUM_PAREN = re.compile(r"\(\s*(\d{1,4})\s*\)")
 
 
-class CdaError(RuntimeError):
+try:
+    from providers import ProviderError
+except (ImportError, ModuleNotFoundError):
+    class ProviderError(RuntimeError):
+        pass
+
+
+class CdaError(ProviderError):
     pass
 
 

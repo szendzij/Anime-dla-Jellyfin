@@ -44,7 +44,14 @@ DEFAULT_SESSION_FILE = Path(
 ).expanduser()
 
 
-class OgladajAnimeError(RuntimeError):
+try:
+    from providers import ProviderError
+except (ImportError, ModuleNotFoundError):
+    class ProviderError(RuntimeError):
+        pass
+
+
+class OgladajAnimeError(ProviderError):
     pass
 
 

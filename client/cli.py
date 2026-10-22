@@ -20,7 +20,7 @@ from pathlib import Path
 
 from oa import AuthError, OgladajAnimeError, Episode, pick_best
 from jellyfin import download_media, target_path, write_strm, write_strm_url
-from providers import CDA, OA, SHINDEN, CdaError, ShindenError, build_sources
+from providers import CDA, OA, SHINDEN, ProviderError, build_sources
 
 DEFAULT_ROOT = Path("~/media/ogladajanime").expanduser()
 
@@ -253,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     except AuthError as e:
         print(f"Błąd logowania: {e}", file=sys.stderr)
         return 2
-    except (OgladajAnimeError, CdaError) as e:
+    except ProviderError as e:
         print(f"Błąd: {e}", file=sys.stderr)
         return 1
 

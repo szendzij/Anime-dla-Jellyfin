@@ -32,7 +32,7 @@ import requests
 
 from oa import AuthError, OgladajAnimeError
 from oa import UA as BROWSER_UA
-from providers import CDA, OA, SHINDEN, CdaError, ShindenError, build_sources, pick_best, split_ref
+from providers import CDA, OA, SHINDEN, ProviderError, build_sources, pick_best, split_ref
 
 # CDA oddaje jeden plik MP4 na jakość i przepuszcza ffmpeg (UA Lavf), więc
 # domyślnie przekierowujemy — bajty nie jadą przez HA. Gdyby CDN zaczął
@@ -146,7 +146,7 @@ def make_handler(caches: dict, series_hint: str | None):
             except AuthError as e:
                 self._json(502, {"error": f"logowanie: {e}"})
                 return
-            except (OgladajAnimeError, CdaError, ShindenError) as e:
+            except ProviderError as e:
                 self._json(502, {"error": str(e)})
                 return
 

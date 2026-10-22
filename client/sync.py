@@ -16,8 +16,8 @@ import argparse
 from pathlib import Path
 
 import collection
-from oa import AuthError, OgladajAnimeError
-from providers import build_sources
+from oa import AuthError
+from providers import ProviderError, build_sources
 
 
 def main() -> int:
@@ -63,7 +63,7 @@ def main() -> int:
             if res["added"] or args.verbose:
                 state = f"+{res['added']} nowych" if res["added"] else "bez zmian"
                 print(f"  {res['title']:<40} {res['total']:>4} odc.  {state}")
-        except (OgladajAnimeError, RuntimeError) as e:
+        except (ProviderError, OSError) as e:
             failed += 1
             print(f"  {entry.get('title', key):<40} BŁĄD: {e}")
 
