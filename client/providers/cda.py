@@ -74,7 +74,7 @@ def _strip_tags(fragment: str) -> str:
 
 def episode_number(title: str) -> int | None:
     """Numer odcinka z tytułu pozycji w folderze."""
-    for rx in (RE_NUM_LABELLED, RE_NUM_TRAILING, RE_NUM_PAREN):
+    for rx in (RE_NUM_LABELLED, RE_NUM_PAREN):
         m = rx.search(title)
         if m:
             try:
@@ -83,6 +83,16 @@ def episode_number(title: str) -> int | None:
                 continue
             if 0 < n <= 3000:
                 return n
+
+    m = RE_NUM_TRAILING.search(title)
+    if m:
+        try:
+            n = int(m.group(1))
+            if 0 < n <= 3000 and not (1900 <= n <= 2099):
+                return n
+        except ValueError:
+            pass
+
     return None
 
 

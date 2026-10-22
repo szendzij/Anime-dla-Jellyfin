@@ -38,7 +38,8 @@ def season_dir(ep: Episode) -> str:
 
 
 def episode_filename(series: str, ep: Episode) -> str:
-    code = f"S{ep.season:02d}E{ep.number:02d}"
+    num = ep.number if ep.number is not None else 0
+    code = f"S{ep.season:02d}E{num:02d}"
     return f"{sanitize(series)} - {code} - {sanitize(ep.title)}.strm"
 
 
@@ -76,9 +77,6 @@ def _hls_download(
         playlist = r.text
         playlist_url = r.url
 
-    if "#EXT-X-KEY:METHOD=AES-128" in playlist:
-        raise RuntimeError("Strumień szyfrowany AES-128 — potrzebny ffmpeg lub yt-dlp")
-
     # master playlist -> wybierz wariant o najwyższym BANDWIDTH
     variants = [
         (int(bw), _resolve(playlist_url, uri.strip()))
@@ -92,6 +90,9 @@ def _hls_download(
             r.raise_for_status()
             playlist = r.text
             playlist_url = r.url
+
+    if "#EXT-X-KEY:METHOD=AES-128" in playlist:
+        raise RuntimeError("Strumień szyfrowany AES-128 — potrzebny ffmpeg lub yt-dlp")
 
     init_seg = None
     m = re.search(r'#EXT-X-MAP:URI="([^"]+)"', playlist)
