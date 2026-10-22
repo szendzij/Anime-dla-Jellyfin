@@ -44,11 +44,9 @@ DEFAULT_SESSION_FILE = Path(
 ).expanduser()
 
 
-try:
-    from providers import ProviderError
-except (ImportError, ModuleNotFoundError):
-    class ProviderError(RuntimeError):
-        pass
+class ProviderError(RuntimeError):
+    """Bazowy wyjątek dla wszystkich błędów providerów treści."""
+    pass
 
 
 class OgladajAnimeError(ProviderError):

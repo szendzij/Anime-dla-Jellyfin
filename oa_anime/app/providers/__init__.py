@@ -15,13 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
-class ProviderError(RuntimeError):
-    """Bazowy wyjątek dla wszystkich błędów providerów treści."""
-    pass
-
-
-from oa import Episode, Link, OgladajAnime, pick_best
+from oa import Episode, Link, OgladajAnime, ProviderError, pick_best
 from providers.cda import Cda, CdaError, EP_PREFIX as CDA_PREFIX
 from providers.shinden import Shinden, ShindenError, EP_PREFIX as SHINDEN_PREFIX
 

@@ -33,7 +33,7 @@ import time
 
 import requests
 
-from oa import Episode, Link, UA
+from oa import Episode, Link, ProviderError, UA
 from providers.cda import Cda, CdaError, video_id_from_url
 
 BASE = "https://shinden.pl"
@@ -53,13 +53,6 @@ RE_IMG = re.compile(r'<img[^>]+(?:data-src|src)="([^"]+)"', re.I)
 RE_PLAYER_JSON = re.compile(r"data-episode='([^']+)'")
 RE_AUTH = re.compile(r"_Storage\.basic\s*=\s*'([^']+)'")
 RE_IFRAME = re.compile(r'<iframe[^>]*src="([^"]+)"', re.I)
-
-
-try:
-    from providers import ProviderError
-except (ImportError, ModuleNotFoundError):
-    class ProviderError(RuntimeError):
-        pass
 
 
 class ShindenError(ProviderError):

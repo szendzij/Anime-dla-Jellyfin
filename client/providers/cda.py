@@ -22,7 +22,7 @@ import time
 
 import requests
 
-from oa import Episode, Link, UA
+from oa import Episode, Link, ProviderError, UA
 from urllib.parse import urljoin
 
 BASE = "https://www.cda.pl"
@@ -46,13 +46,6 @@ RE_HREF_ATTR = re.compile(r'href="([^"]*)"', re.I)
 RE_NUM_LABELLED = re.compile(r"(?:odc\.?|odcinek|ep\.?|episode|e)\s*(\d{1,4})", re.I)
 RE_NUM_TRAILING = re.compile(r"(\d{1,4})\s*$")
 RE_NUM_PAREN = re.compile(r"\(\s*(\d{1,4})\s*\)")
-
-
-try:
-    from providers import ProviderError
-except (ImportError, ModuleNotFoundError):
-    class ProviderError(RuntimeError):
-        pass
 
 
 class CdaError(ProviderError):
