@@ -20,3 +20,7 @@ Katalog `client/` jest źródłem prawdy dla logiki w Pythonie. Katalog `oa_anim
 
 ## 4. Git na Windows
 - Utrzymuj `git config core.fileMode false`, aby zapobiec fałszywym modyfikacjom uprawnień skryptów `.sh`.
+
+## 5. Wersjonowanie dodatku Home Assistant
+- Każda zmiana funkcjonalna, poprawka błędu lub aktualizacja kodu w `client/` / `oa_anime/` **musi** wiązać się z podbiciem wersji w `oa_anime/config.yaml` (`version: "X.Y.Z"`).
+- Bez zmiany pola `version`, Home Assistant Supervisor nie wykrywa aktualizacji repozytorium i nie przebudowuje kontenera dodatku.
