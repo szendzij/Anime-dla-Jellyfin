@@ -25,6 +25,10 @@ install -d -m 755 "$DEST/client"
 install -m 644 "$SRC"/*.py "$DEST/client/"
 [ -f "$SRC/README.md" ] && install -m 644 "$SRC/README.md" "$DEST/client/README.md"
 
+# providers/ to warstwa zrodel — niezbedna do dzialania
+install -d -m 755 "$DEST/client/providers"
+install -m 644 "$SRC"/providers/*.py "$DEST/client/providers/"
+
 if [ ! -f /etc/oa-anime.env ]; then
   install -m 600 -o root -g root "$SRC/deploy/oa-anime.env.example" /etc/oa-anime.env
   echo ">> Utworzono /etc/oa-anime.env — uzupełnij OA_LOGIN, OA_PASS, JELLYFIN_API_KEY."
