@@ -190,10 +190,10 @@ def make_handler(caches: dict, series_hint: str | None):
 
             clean_url = url.split("?")[0]
             if name in (CDA, SHINDEN):
-                # CDA oddaje jeden plik na jakość (albo HLS z normalnymi .ts),
-                # a Shinden rozwiązujemy do CDA — w obu przypadkach ffmpeg pobiera
-                # materiał sam, więc przekierowujemy i nie przepuszczamy bajtów.
-                if CDA_PROXY:
+                # CDA oddaje jeden plik na jakość albo HLS (z fmp4 / .ts).
+                # W obu przypadkach ffmpeg pobiera materiał sam, więc przekierowujemy
+                # (dla bezpośredniego pliku MP4 opcjonalne CDA_PROXY przesyła strumień).
+                if CDA_PROXY and not clean_url.endswith(".m3u8"):
                     print(f"[streamd] odcinek {m.group(1)} -> proxy CDA", flush=True)
                     self._proxy(url, referer="https://www.cda.pl/")
                     return

@@ -420,17 +420,26 @@ class Cda:
         return player_config(page)
 
     def _variants(self, mpd_url: str) -> list[Link]:
-        """Rozbiera manifest DASH na pojedyncze pliki.
+        """Rozbiera manifest DASH na warianty jakości.
 
-        CDA używa profilu on-demand: `<BaseURL>` wskazuje jeden plik MP4
-        z indeksem (SegmentBase indexRange), a manifest opisuje dostępne jakości.
-        Podanie takiego pliku wprost jest dla Jellyfina lepsze niż DASH —
-        odtwarza natywnie i pozwala przewijać.
+        CDA używa profilu on-demand (shaka-packager): manifest DASH dzieli
+        strumienie na osobne pliki wideo (<BaseURL>) oraz audio (a_*.mp4
+        w osobnym AdaptationSet). Podanie samego pliku wideo z <BaseURL>
+        skutkuje odtwarzaniem bez dźwięku.
+        Gdy audio jest w osobnym strumieniu, odsyłamy do playlisty HLS (.m3u8),
+        która łączy obraz z dźwiękiem w Jellyfinie.
         """
         try:
             xml = self._page(mpd_url)
         except CdaError:
             return []
+
+        has_separate_audio = bool(
+            re.search(r'contentType=["\']audio["\']', xml, re.I)
+            or 'mimeType="audio/' in xml
+            or re.search(r"<BaseURL>[^<]*a_[^<]+</BaseURL>", xml)
+        )
+        m3u8_url = mpd_url.replace(".mpd", ".m3u8") if ".mpd" in mpd_url else None
 
         reps = re.findall(r"<Representation\b([^>]*)>(.*?)</Representation>", xml, re.S)
         if not reps:
@@ -443,15 +452,23 @@ class Cda:
             m = re.search(r"<BaseURL>([^<]+)</BaseURL>", body)
             if not m:
                 continue
-            src = urljoin(mpd_url, _clean(m.group(1)))
             res = int(h) if h.isdigit() else 0
+            if has_separate_audio and m3u8_url:
+                # Wideo w DASH jest pozbawione dźwięku (audio jest w osobnym BaseURL a_*).
+                # Playlista HLS wiąże obie ścieżki i zapewnia dźwięk.
+                src = m3u8_url
+                mime = "application/x-mpegURL"
+            else:
+                src = urljoin(mpd_url, _clean(m.group(1)))
+                mime = "video/mp4"
+
             out.append(
                 Link(
                     label=f"{res}p" if res else f"{bw}bps",
                     res=res,
                     src=src,
                     main_url=mpd_url,
-                    mime="video/mp4",
+                    mime=mime,
                 )
             )
         return out
@@ -493,8 +510,13 @@ class Cda:
         # manifest jako plan B (HLS/DASH) — gdy videoGetLink odmówi
         if not out and cfg.get("manifest"):
             man = cfg["manifest"]
-            mime = "application/x-mpegURL" if ".m3u8" in man else "application/dash+xml"
-            return [Link(label="manifest", res=0, src=man, main_url=man, mime=mime)]
+            if ".mpd" in man:
+                got = self._variants(man)
+                if got:
+                    return dedupe_variants(got)
+            m3u8_man = man.replace(".mpd", ".m3u8") if ".mpd" in man else man
+            mime = "application/x-mpegURL" if ".m3u8" in m3u8_man else "application/dash+xml"
+            return [Link(label="manifest", res=0, src=m3u8_man, main_url=man, mime=mime)]
 
         return dedupe_variants(out)
 
