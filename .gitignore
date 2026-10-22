@@ -22,3 +22,4 @@ repo/
 *.swp
 .idea/
 .vscode/
+.superpowers/
