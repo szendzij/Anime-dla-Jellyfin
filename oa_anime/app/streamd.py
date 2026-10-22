@@ -26,7 +26,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 
@@ -76,38 +76,42 @@ class LinkCache:
             return int(m.group(1)) - SAFETY_MARGIN
         return time.time() + DEFAULT_TTL
 
-    def get(self, ep_id: str) -> str | None:
+    def get(self, ep_id: str, player_idx: int | None = None) -> str | None:
+        cache_key = f"{ep_id}:p{player_idx}" if player_idx is not None else ep_id
         with self._lock:
-            hit = self._data.get(ep_id)
+            hit = self._data.get(cache_key)
             if hit and hit[1] > time.time():
                 return hit[0]
 
-            event = self._fetching.get(ep_id)
+            event = self._fetching.get(cache_key)
             is_fetcher = False
             if event is None:
                 event = threading.Event()
-                self._fetching[ep_id] = event
+                self._fetching[cache_key] = event
                 is_fetcher = True
 
         if not is_fetcher:
             event.wait(timeout=45)
             with self._lock:
-                hit = self._data.get(ep_id)
+                hit = self._data.get(cache_key)
                 return hit[0] if hit else None
 
         url = None
         try:
             links = self.source.links(ep_id)
-            link = pick_best(links, self.quality)
-            if link is not None:
-                url = link.src
+            if player_idx is not None and 0 <= player_idx < len(links):
+                url = links[player_idx].src
+            else:
+                link = pick_best(links, self.quality)
+                if link is not None:
+                    url = link.src
         finally:
             with self._lock:
                 if url:
-                    self._data[ep_id] = (url, self._expiry(url))
+                    self._data[cache_key] = (url, self._expiry(url))
                 else:
-                    self._data.pop(ep_id, None)
-                self._fetching.pop(ep_id, None)
+                    self._data.pop(cache_key, None)
+                self._fetching.pop(cache_key, None)
                 event.set()
 
         return url
@@ -136,7 +140,10 @@ def make_handler(caches: dict, series_hint: str | None):
             return self.headers.get("Host") or "%s:%s" % self.server.server_address
 
         def do_GET(self) -> None:  # noqa: N802
-            path = urlparse(self.path).path.rstrip("/")
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path.rstrip("/")
+            query = parse_qs(parsed_path.query)
+            player_idx = int(query["p"][0]) if "p" in query and query["p"][0].isdigit() else None
 
             if path in ("/health", ""):
                 self._json(
@@ -164,9 +171,9 @@ def make_handler(caches: dict, series_hint: str | None):
                 return
 
             name, ep_id = split_ref(m.group(1))
-            print(f"[streamd] żądanie odcinka: {m.group(1)} (źródło: {name})", flush=True)
+            print(f"[streamd] żądanie odcinka: {m.group(1)} (źródło: {name}, player: {player_idx})", flush=True)
             try:
-                url = caches[name].get(ep_id)
+                url = caches[name].get(ep_id, player_idx)
             except AuthError as e:
                 print(f"[streamd] błąd logowania ({m.group(1)}): {e}", flush=True)
                 self._json(502, {"error": f"logowanie: {e}"})

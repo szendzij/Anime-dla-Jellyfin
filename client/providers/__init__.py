@@ -73,9 +73,10 @@ class Source:
     def links(self, ep_id: str) -> list[Link]:
         raise NotImplementedError
 
-    def strm_url(self, base_url: str, ep_id: str) -> str:
+    def strm_url(self, base_url: str, ep_id: str, player_idx: int | None = None) -> str:
         """Adres do wpisania w `.strm` — zawsze przez lokalny redirector."""
-        return f"{base_url.rstrip('/')}/e/{self.prefix}{ep_id}"
+        q = f"?p={player_idx}" if player_idx is not None and player_idx >= 0 else ""
+        return f"{base_url.rstrip('/')}/e/{self.prefix}{ep_id}{q}"
 
 
 class OaSource(Source):

@@ -109,6 +109,7 @@ def sync_series(source: Source, key: str, entry: dict) -> dict:
     root = Path(entry["root"])
     base_url = entry["base_url"]
     title = entry["title"]
+    overrides = entry.get("player_overrides", {})
 
     episodes = source.episodes(entry_ref(key, entry))
     added = 0
@@ -117,12 +118,47 @@ def sync_series(source: Source, key: str, entry: dict) -> dict:
             continue
         path = _target(root, title, ep)
         if not path.exists():
-            write_strm_url(root, title, ep, source.strm_url(base_url, ep.ep_id))
+            pidx = overrides.get(str(ep.ep_id))
+            write_strm_url(root, title, ep, source.strm_url(base_url, ep.ep_id, player_idx=pidx))
             added += 1
 
     entry["episodes"] = len([e for e in episodes if e.season == 1])
     entry["last_sync"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     return {"key": key, "title": title, "added": added, "total": len(episodes)}
+
+
+def set_episode_player(
+    data: dict,
+    key: str,
+    ep_id: str,
+    player_idx: int | None,
+    source: Source,
+) -> str:
+    """Zmienia wybrany odtwarzacz dla danego odcinka i aktualizuje plik .strm."""
+    entry = data.get("series", {}).get(key)
+    if not entry:
+        raise KeyError(f"Nie znaleziono serii '{key}' w kolekcji")
+
+    overrides = entry.setdefault("player_overrides", {})
+    ep_id_str = str(ep_id)
+    if player_idx is not None and player_idx >= 0:
+        overrides[ep_id_str] = int(player_idx)
+    else:
+        overrides.pop(ep_id_str, None)
+
+    ref = entry_ref(key, entry)
+    episodes = source.episodes(ref)
+    target_ep = next((e for e in episodes if str(e.ep_id) == ep_id_str), None)
+    if not target_ep:
+        raise ValueError(f"Nie znaleziono odcinka o id '{ep_id}' w serii '{key}'")
+
+    url = source.strm_url(
+        entry["base_url"],
+        target_ep.ep_id,
+        player_idx=player_idx if player_idx is not None and player_idx >= 0 else None,
+    )
+    write_strm_url(Path(entry["root"]), entry["title"], target_ep, url)
+    return url
 
 
 def _target(root: Path, title: str, ep: Episode) -> Path:

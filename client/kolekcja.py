@@ -67,7 +67,7 @@ PAGE = """<!doctype html>
  .card button{margin-top:auto;padding:8px;font-size:13px;min-height:38px}
  .col-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
  .col-search-wrap{flex:1;min-width:200px}
- .item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:10px}
+ .item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
  .item .n{flex:1;min-width:0}
  .item .n b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px}
  .item .n span{color:var(--mut);font-size:12px}
@@ -256,20 +256,125 @@ async function loadCol(){
       const s=e.source||'oa';
       const tagClass=s==='cda'?'cda':(s==='shinden'?'shinden':'ok');
       const tagLabel=s==='cda'?'CDA':(s==='shinden'?'Shinden':'ogladajanime');
-      return `<div class="item" data-title="${esc(e.title)}">
+      return `<div class="item" data-title="${esc(e.title)}" id="item-${esc(k)}">
         <span class="tag ${tagClass}">${esc(tagLabel)}</span>
         <div class="n">
           <b>${esc(e.title)}</b>
           <span>${e.episodes||0} odcinków · dodano ${(e.added||'').slice(0,10)}${e.last_sync?' · sync '+(e.last_sync||'').slice(0,10):''}</span>
         </div>
         <div class="item-actions">
+          <button class="ghost" data-ep-key="${esc(k)}">Odcinki</button>
           <button class="danger" data-key="${esc(k)}">Usuń</button>
+        </div>
+        <div class="ep-container" id="ep-container-${esc(k)}" style="display:none;width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div class="ep-loading" style="color:var(--mut);font-size:13px">Ładowanie odcinków…</div>
+          <div class="ep-list" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
       </div>`;
     }).join('');
     $('#col').querySelectorAll('button.danger').forEach(b=>b.onclick=()=>rm(b.dataset.key));
+    $('#col').querySelectorAll('button[data-ep-key]').forEach(b=>b.onclick=()=>toggleEpisodes(b.dataset.epKey, b));
   }catch(e){
     toast('Nie udało się załadować kolekcji: '+e.message,'err');
+  }
+}
+
+async function toggleEpisodes(key, btn){
+  const container = document.getElementById('ep-container-' + key);
+  if (!container) return;
+  if (container.style.display !== 'none') {
+    container.style.display = 'none';
+    btn.textContent = 'Odcinki';
+    return;
+  }
+  container.style.display = 'block';
+  btn.textContent = 'Zwiń';
+  const listEl = container.querySelector('.ep-list');
+  const loadingEl = container.querySelector('.ep-loading');
+  loadingEl.style.display = 'block';
+  loadingEl.textContent = 'Ładowanie listy odcinków…';
+  listEl.innerHTML = '';
+  try {
+    const data = await api('api/series_episodes?key=' + encodeURIComponent(key));
+    loadingEl.style.display = 'none';
+    if (!data.episodes || !data.episodes.length) {
+      listEl.innerHTML = '<div style="color:var(--mut);font-size:13px">Brak odcinków w źródle.</div>';
+      return;
+    }
+    listEl.innerHTML = data.episodes.map(ep => {
+      const pText = ep.player_idx !== null && ep.player_idx !== undefined
+        ? `<span class="tag ok" style="font-size:10px;padding:2px 6px">Odtwarzacz #${ep.player_idx}</span>`
+        : `<span class="tag" style="font-size:10px;padding:2px 6px;color:var(--mut)">Domyślny</span>`;
+      const epNum = ep.number !== null && ep.number !== undefined ? ep.number : 0;
+      const code = `S${String(ep.season).padStart(2,'0')}E${String(epNum).padStart(2,'0')}`;
+      return `<div class="ep-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);padding:8px 12px;border-radius:8px;font-size:13px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px;display:flex;align-items:center;gap:6px">
+          <b>${esc(code)}</b>
+          <span style="color:var(--fg);overflow:hidden;text-overflow:ellipsis">${esc(ep.title || 'Odcinek')}</span>
+          ${pText}
+        </div>
+        <div>
+          <button class="ghost" style="min-height:30px;padding:4px 10px;font-size:12px" data-pchoose-key="${esc(key)}" data-pchoose-ep="${esc(ep.ep_id)}" data-pchoose-src="${esc(data.source)}">Zmień odtwarzacz</button>
+        </div>
+        <div class="ep-players-box" id="ep-players-${esc(ep.ep_id)}" style="display:none;width:100%;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)"></div>
+      </div>`;
+    }).join('');
+    listEl.querySelectorAll('button[data-pchoose-key]').forEach(b => {
+      b.onclick = () => openPlayerChooser(b.dataset.pchooseKey, b.dataset.pchooseEp, b.dataset.pchooseSrc);
+    });
+  } catch (e) {
+    loadingEl.style.display = 'block';
+    loadingEl.textContent = 'Błąd: ' + e.message;
+  }
+}
+
+async function openPlayerChooser(key, epId, source){
+  const box = document.getElementById('ep-players-' + epId);
+  if (!box) return;
+  if (box.style.display !== 'none') {
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<span style="color:var(--mut);font-size:12px">Pobieranie dostępnych odtwarzaczy…</span>';
+  try {
+    const data = await api(`api/episode_players?source=${encodeURIComponent(source)}&ep_id=${encodeURIComponent(epId)}`);
+    if (!data.players || !data.players.length) {
+      box.innerHTML = '<span style="color:var(--warn);font-size:12px">Brak alternatywnych odtwarzaczy dla tego odcinka.</span>';
+      return;
+    }
+    let html = `<div style="font-size:12px;color:var(--mut);margin-bottom:6px">Wybierz odtwarzacz dla tego odcinka:</div>`;
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+    html += `<button class="ghost" style="min-height:28px;padding:3px 8px;font-size:11px" data-set-p="null">↺ Automatyczny (domyślny)</button>`;
+    data.players.forEach(p => {
+      const label = `[#${p.idx}] ${esc(p.label)} (${esc(p.host)})`;
+      html += `<button class="ghost" style="min-height:28px;padding:3px 8px;font-size:11px" data-set-p="${p.idx}">${label}</button>`;
+    });
+    html += `</div>`;
+    box.innerHTML = html;
+    box.querySelectorAll('button[data-set-p]').forEach(b => {
+      const pVal = b.dataset.setP === 'null' ? null : parseInt(b.dataset.setP, 10);
+      b.onclick = () => setPlayer(key, epId, pVal);
+    });
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--danger);font-size:12px">Błąd: ${esc(e.message)}</span>`;
+  }
+}
+
+async function setPlayer(key, epId, playerIdx){
+  toast('Zapisywanie wybranego odtwarzacza…');
+  try {
+    await api('api/set_episode_player', {key, ep_id: epId, player_idx: playerIdx});
+    toast('Zmieniono odtwarzacz! Plik .strm został zaktualizowany.', 'ok');
+    const container = document.getElementById('ep-container-' + key);
+    const itemEl = document.getElementById('item-' + key);
+    const btn = itemEl ? itemEl.querySelector('button[data-ep-key]') : null;
+    if (container && btn) {
+      container.style.display = 'none';
+      toggleEpisodes(key, btn);
+    }
+  } catch (e) {
+    toast('Błąd: ' + e.message, 'err');
   }
 }
 
@@ -390,6 +495,73 @@ def build_handler(st: State):
             if p == "/api/collection":
                 self._json(200, st.get_data().get("series", {}))
                 return
+            if p == "/api/series_episodes":
+                qs = parse_qs(query)
+                key = (qs.get("key") or [""])[0].strip()
+                if not key:
+                    self._json(400, {"error": "brak parametru 'key'"})
+                    return
+                with st.lock:
+                    st.data = collection.load(st.path)
+                    entry = st.data.get("series", {}).get(key)
+                if not entry:
+                    self._json(404, {"error": f"Nie znaleziono serii '{key}'"})
+                    return
+                source_name = entry.get("source") or OA
+                try:
+                    src = self._source(source_name)
+                    src.ensure_ready()
+                    episodes = src.episodes(collection.entry_ref(key, entry))
+                    overrides = entry.get("player_overrides", {})
+                    out = [
+                        {
+                            "ep_id": str(e.ep_id),
+                            "season": e.season,
+                            "number": e.number,
+                            "title": e.title,
+                            "player_idx": overrides.get(str(e.ep_id)),
+                        }
+                        for e in episodes
+                    ]
+                    self._json(200, {"key": key, "source": source_name, "episodes": out})
+                except (AuthError, ProviderError) as e:
+                    print(f"[panel] błąd pobierania odcinków dla '{key}': {e}", flush=True)
+                    self._json(502, {"error": str(e)})
+                return
+            if p == "/api/episode_players":
+                qs = parse_qs(query)
+                source_name = (qs.get("source") or [OA])[0].strip() or OA
+                ep_id = (qs.get("ep_id") or [""])[0].strip()
+                if not ep_id:
+                    self._json(400, {"error": "brak parametru 'ep_id'"})
+                    return
+                try:
+                    src = self._source(source_name)
+                    src.ensure_ready()
+                    links = src.links(ep_id)
+                    players = []
+                    for idx, l in enumerate(links):
+                        host = ""
+                        target = l.main_url or l.src or ""
+                        if target:
+                            try:
+                                host = urlparse(target).netloc.lower()
+                                if host.startswith("www."):
+                                    host = host[4:]
+                            except Exception:
+                                host = ""
+                        players.append({
+                            "idx": idx,
+                            "label": l.label,
+                            "res": l.res,
+                            "host": host or "domyślny CDN",
+                            "mime": l.mime,
+                        })
+                    self._json(200, {"ep_id": ep_id, "players": players})
+                except (AuthError, ProviderError) as e:
+                    print(f"[panel] błąd pobierania odtwarzaczy dla '{ep_id}': {e}", flush=True)
+                    self._json(502, {"error": str(e)})
+                return
             self._json(404, {"error": "nieznana ścieżka"})
 
         def _add(self, source, ref: str, title: str, poster: str) -> dict:
@@ -456,6 +628,36 @@ def build_handler(st: State):
                 scanned = collection.trigger_scan() if ok else False
                 print(f"[panel] usunięto serię '{key}': {'sukces' if ok else 'nie znaleziono'}", flush=True)
                 self._json(200 if ok else 404, {"removed": ok, "scanned": scanned})
+                return
+
+            if p == "/api/set_episode_player":
+                key = (body.get("key") or "").strip()
+                ep_id = str(body.get("ep_id") or "").strip()
+                player_idx = body.get("player_idx")
+                if player_idx is not None:
+                    try:
+                        player_idx = int(player_idx)
+                    except (ValueError, TypeError):
+                        player_idx = None
+                if not key or not ep_id:
+                    self._json(400, {"error": "brak parametru 'key' lub 'ep_id'"})
+                    return
+                try:
+                    with st.lock:
+                        st.data = collection.load(st.path)
+                        entry = st.data.get("series", {}).get(key)
+                        if not entry:
+                            self._json(404, {"error": f"Nie znaleziono serii '{key}'"})
+                            return
+                        src = self._source(entry.get("source") or OA)
+                        src.ensure_ready()
+                        url = collection.set_episode_player(st.data, key, ep_id, player_idx, src)
+                        collection.save(st.path, st.data)
+                    print(f"[panel] zmieniono odtwarzacz dla '{key}' ep_id {ep_id} -> {url}", flush=True)
+                    self._json(200, {"ok": True, "url": url})
+                except (AuthError, ProviderError, KeyError, ValueError, OSError) as e:
+                    print(f"[panel] błąd zmiany odtwarzacza dla '{key}' ({ep_id}): {e}", flush=True)
+                    self._json(502, {"error": str(e)})
                 return
 
             if p == "/api/scan":
