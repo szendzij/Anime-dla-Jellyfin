@@ -1,5 +1,5 @@
 name: "Anime dla Jellyfin"
-version: "1.1.0"
+version: "1.1.1"
 slug: "oa_anime_jellyfin"
 description: "Kolekcja anime w Jellyfin: ogladajanime.pl, CDA i Shinden (redirector strumieni + panel)"
 url: "https://github.com/USER/REPO"

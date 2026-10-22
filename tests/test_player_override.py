@@ -177,6 +177,21 @@ class TestPlayerOverride(unittest.TestCase):
             strm_file = root / "Test Anime" / "Season 01" / "Test Anime - S01E01 - Początek.strm"
             self.assertEqual(strm_file.read_text(encoding="utf-8").strip(), "http://localhost:9099/e/101?p=1")
 
+            # 4. POST /api/add (sprawdza czy logowanie liczby plików nie rzuca TypeError)
+            add_body = json.dumps({"ref": "new-anime", "title": "New Anime", "source": "oa"}).encode("utf-8")
+            req = (
+                b"POST /api/add HTTP/1.1\r\nHost: localhost:9100\r\nContent-Type: application/json\r\n"
+                + f"Content-Length: {len(add_body)}\r\n\r\n".encode("utf-8")
+                + add_body
+            )
+            sock = DummySocket(req)
+            handler_cls(sock, ("127.0.0.1", 12345), DummyServer())
+            resp = sock._wfile.getvalue().decode("utf-8")
+            self.assertIn("HTTP/1.0 200", resp)
+            body = json.loads(resp.split("\r\n\r\n", 1)[1])
+            self.assertEqual(body["title"], "New Anime")
+            self.assertEqual(body["files"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

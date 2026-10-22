@@ -573,7 +573,8 @@ def build_handler(st: State):
                     source, st.data, ref, title, st.root, st.base_url, poster
                 )
                 collection.save(st.path, st.data)
-            print(f"[panel] zapisano serię '{title}' ({len(entry.get('files', []))} plików .strm)", flush=True)
+            files_cnt = len(entry["files"]) if isinstance(entry.get("files"), list) else entry.get("files", 0)
+            print(f"[panel] zapisano serię '{title}' ({files_cnt} plików .strm)", flush=True)
             return entry
 
         def do_POST(self) -> None:  # noqa: N802
