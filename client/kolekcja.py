@@ -62,6 +62,7 @@ PAGE = """<!doctype html>
  .tag{font-size:11px;padding:3px 8px;border-radius:99px;background:#252a36;color:var(--mut)}
  .tag.ok{background:rgba(63,191,127,.15);color:var(--ok)}
  .tag.cda{background:rgba(108,140,255,.15);color:var(--acc)}
+ .tag.shinden{background:rgba(255,165,0,.15);color:#ffa500}
  .msg{color:var(--mut);font-size:13px;margin-top:10px;min-height:18px}
  .err{color:#ff7b7b}
 </style></head><body>
@@ -145,8 +146,10 @@ async function loadCol(){
   const d=await api('/api/collection');
   const ks=Object.keys(d);
   $('#col').innerHTML=ks.length?ks.map(k=>{const e=d[k];const s=e.source||'oa';
+    const tagClass = s === 'cda' ? 'cda' : (s === 'shinden' ? 'shinden' : 'ok');
+    const tagLabel = s === 'cda' ? 'CDA' : (s === 'shinden' ? 'Shinden' : 'ogladajanime');
     return `<div class="item">
-    <span class="tag ${s==='cda'?'cda':'ok'}">${esc(s==='cda'?'CDA':'ogladajanime')}</span>
+    <span class="tag ${tagClass}">${esc(tagLabel)}</span>
     <div class="n"><b>${esc(e.title)}</b><span>${e.episodes||0} odcinków · dodano ${(e.added||'').slice(0,10)}${e.last_sync?' · sync '+(e.last_sync||'').slice(0,10):''}</span></div>
     <button class="ghost" data-key="${esc(k)}">Usuń</button></div>`}).join(''):'<div class="msg">Nic jeszcze nie dodane.</div>';
   $('#col').querySelectorAll('button').forEach(b=>b.onclick=()=>rm(b.dataset.key));
@@ -173,6 +176,11 @@ class State:
         self.root = root
         self.base_url = base_url
         self.lock = threading.Lock()
+
+    def get_data(self) -> dict:
+        with self.lock:
+            self.data = collection.load(self.path)
+            return self.data
 
 
 def build_handler(st: State):
@@ -227,13 +235,14 @@ def build_handler(st: State):
                     self._json(502, {"error": str(e)})
                 return
             if u.path == "/api/collection":
-                self._json(200, st.data["series"])
+                self._json(200, st.get_data().get("series", {}))
                 return
             self._json(404, {"error": "nieznana ścieżka"})
 
         def _add(self, source, ref: str, title: str, poster: str) -> dict:
             source.ensure_ready()
             with st.lock:
+                st.data = collection.load(st.path)
                 entry = collection.add_series(
                     source, st.data, ref, title, st.root, st.base_url, poster
                 )
@@ -281,6 +290,7 @@ def build_handler(st: State):
             if u.path == "/api/remove":
                 key = (body.get("key") or "").strip()
                 with st.lock:
+                    st.data = collection.load(st.path)
                     ok = collection.remove_series(st.data, key)
                     collection.save(st.path, st.data)
                 scanned = collection.trigger_scan() if ok else False
